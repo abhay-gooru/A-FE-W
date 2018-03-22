@@ -2,9 +2,10 @@ import Ember from 'ember';
 import { createDataMatrix } from 'gooru-web/utils/performance-data';
 import { alphabeticalStringSort, numberSort } from 'gooru-web/utils/utils';
 import { DEFAULT_IMAGES } from 'gooru-web/config/config';
+import _ from 'lodash';
 /**
-   * used to increment hbs file
-*/
+ * used to increment hbs file
+ */
 export function plusOne(params) {
   return parseInt(params) + 1;
 }
@@ -627,8 +628,8 @@ export default Ember.Component.extend({
       }
     },
     /**
-       * When the user clicks at the report
-       */
+     * When the user clicks at the report
+     */
     clickReport: function(performance, userPerformance) {
       if (this.get('onClickReport')) {
         this.sendAction('onClickReport', performance, userPerformance);
@@ -967,9 +968,22 @@ export default Ember.Component.extend({
                   { collectionType: filterBy }
                 )
                 .then(function(classPerformanceData) {
-                  lessons.forEach(function(lessonObj, lessonIndex) {
-                    setTimeout(function() {
-                      component.eachLessonAssessment(
+                  let paramslesson = {
+                    courseIdVal: courseIdVal,
+                    unitId: unitId,
+                    lessons: lessons
+                  };
+
+                  alert('Resolving all lessons');
+                  var resolvedlessons = component.getResolvedLessons(
+                    paramslesson
+                  );
+                  resolvedlessons.then(function(resolvedlessons) {
+                    //console.log("Resolved all lessons");
+                    alert('Resolved all lessons');
+                    resolvedlessons.forEach(function(lessonObj, lessonIndex) {
+                      // setTimeout(function() {
+                      component.lessonsAssessment(
                         courseIdVal,
                         unitId,
                         lessonObj,
@@ -984,7 +998,8 @@ export default Ember.Component.extend({
                         lessons.length,
                         classPerformanceData
                       );
-                    }, 10 * lessonIndex);
+                      // }, 10 * lessonIndex);
+                    }); //End for
                   });
                 });
             }
@@ -1419,6 +1434,412 @@ export default Ember.Component.extend({
             });
         }
       });
+    index1 = index1 + 1;
+  },
+
+  getLessonPromise: function(params) {
+    const component = this;
+    return new Ember.RSVP.Promise(function(resolve) {
+      component
+        .get('lessonService')
+        .fetchById(params.courseIdVal, params.unitId, params.lessonObj.id)
+        .then(function(lesson) {
+          resolve(lesson);
+        });
+    });
+  },
+
+  getResolvedLessons: function(params) {
+    const component = this;
+    var lessonall = [];
+    params.lessons.forEach(function(lessonObj) {
+      let lessonparam = _.extend(params, { lessonObj: lessonObj });
+      let lessonresolve = component.getLessonPromise(lessonparam);
+      lessonall.push(lessonresolve);
+    });
+    return Ember.RSVP.all(lessonall);
+    //     return resolvedlessons;
+    // })
+    // Ember.RSVP.all(lessonall).then(function(resolvedlessons) {
+    //     return resolvedlessons;
+    // })
+  },
+
+  lessonsAssessment: function(
+    courseIdVal,
+    unitId,
+    lessonObj,
+    index1,
+    lessonIndex,
+    filterBy,
+    unit,
+    classId,
+    members,
+    temp,
+    unitIndex,
+    lessonLen,
+    classPerformanceData
+  ) {
+    const component = this;
+    const lesson = lessonObj;
+    const filteredCollections = lesson
+      .get('children')
+      .filter(function(collection) {
+        return filterBy === 'both' || collection.get('format') === filterBy;
+      });
+    Ember.set(lessonObj, 'subsubColumns', []);
+    if (lessonIndex === 0) {
+      component.set('averageHeadersAssessment', []);
+    }
+    var countCols = 0;
+    var tempInx = index1 + 1;
+    var array1 = [];
+    var array2 = [];
+    var arrayComplete = [];
+    var timerConst = 1000;
+    var tempVal = 0;
+    if (lessonIndex === 0) {
+      component.set('averageHeaderstempAssessment', []);
+    }
+    lesson.get('children').forEach(function(assessmentObj) {
+      if (assessmentObj.format === filterBy) {
+        tempVal = tempVal + 1;
+        countCols = countCols + 1;
+        var emberObject = Ember.Object.create({
+          id: assessmentObj.id,
+          lessonId: lessonObj.id,
+          level: filterBy
+        });
+        var orginalTitle = assessmentObj.get('title');
+        if (filterBy === 'assessment') {
+          assessmentObj.set('title', `A${tempVal}: ${orginalTitle}`);
+        } else {
+          assessmentObj.set('title', `C${tempVal}: ${orginalTitle}`);
+        }
+        lessonObj.get('subsubColumns').pushObject(assessmentObj);
+        component.get('averageHeadersAssessment').pushObject(emberObject);
+      }
+    });
+    if (tempVal === 0) {
+      countCols = countCols + 1;
+      var tempassessmentObj = Ember.Object.create({
+        format: filterBy,
+        id: 'NoObject',
+        collectionType: filterBy,
+        openEndedQuestionCount: 0,
+        questionCount: 0,
+        resourceCount: 0,
+        title: '--NO DATA--'
+      });
+      lessonObj.get('subsubColumns').pushObject(tempassessmentObj);
+    }
+    Ember.run.later(function() {
+      component.set('averageHeadersAssessment', []);
+      component
+        .get('averageHeaderstempAssessment')
+        .forEach(function(lessonItem) {
+          var emberObject = Ember.Object.create({
+            id: 'NoObject',
+            lessonId: lessonItem.lessonId,
+            collectionType: filterBy,
+            unitId: unitId,
+            level: filterBy
+          });
+          if (lessonItem.lessonData.length > 0) {
+            lessonItem.lessonData.forEach(function(item23) {
+              item23.set('level', filterBy);
+              item23.set('unitId', unitId);
+              item23.set('lessonId', lessonItem.lessonId);
+              component.get('averageHeadersAssessment').pushObject(item23);
+            });
+          } else {
+            component.get('averageHeadersAssessment').pushObject(emberObject);
+          }
+        });
+      if (
+        component.get('averageHeadersAssessment').length ===
+        component.get('totalAssessments')
+      ) {
+        component.set('isLoading', false);
+      }
+      if (
+        component.get('averageHeadersAssessment').length === 0 &&
+        component.get('totalAssessments') === 0
+      ) {
+        var inxArr = [];
+        component
+          .get('averageHeaders')
+          .performanceData.forEach(function(item, indx) {
+            if (
+              item.level !== undefined &&
+              (item.level === 'lesson' || item.level === filterBy)
+            ) {
+              inxArr.pushObject(indx);
+            }
+          });
+        inxArr.forEach(function(item, indx) {
+          if (indx > 0) {
+            component
+              .get('averageHeaders')
+              .performanceData.removeAt(inxArr.objectAt(indx) - indx);
+          } else {
+            component
+              .get('averageHeaders')
+              .performanceData.removeAt(inxArr.objectAt(indx));
+          }
+        });
+      } else if (
+        component.get('averageHeadersAssessment').length ===
+        component.get('totalAssessments')
+      ) {
+        component
+          .get('averageHeaders')
+          .performanceData.forEach(function(item, indx) {
+            if (indx < tempInx) {
+              array1.pushObject(item);
+            }
+          });
+        component
+          .get('averageHeaders')
+          .performanceData.forEach(function(item, indx) {
+            if (indx >= tempInx) {
+              array2.pushObject(item);
+            }
+          });
+
+        if (array2.length > countCols) {
+          var inxArr11 = [];
+          component
+            .get('averageHeaders')
+            .performanceData.forEach(function(item, indx) {
+              if (
+                item.level !== undefined &&
+                (item.level === 'lesson' || item.level === filterBy)
+              ) {
+                inxArr11.pushObject(indx);
+              }
+            });
+          inxArr11.forEach(function(item, indx) {
+            if (indx > 0) {
+              component
+                .get('averageHeaders')
+                .performanceData.removeAt(inxArr11.objectAt(indx) - indx);
+            } else {
+              component
+                .get('averageHeaders')
+                .performanceData.removeAt(inxArr11.objectAt(indx));
+            }
+          });
+          array2.forEach(function(item, indx) {
+            if (
+              (item.level !== undefined && item.level === filterBy) ||
+              (item.collectionType !== undefined &&
+                item.collectionType === filterBy)
+            ) {
+              array2.removeAt(indx);
+            }
+          });
+          arrayComplete.pushObjects(array1);
+          arrayComplete.pushObjects(component.get('averageHeadersAssessment'));
+          array2.forEach(function(item) {
+            if (
+              !(
+                (item.collectionType !== undefined &&
+                  item.collectionType === filterBy) ||
+                (item.level !== undefined && item.level === filterBy)
+              )
+            ) {
+              arrayComplete.pushObject(item);
+            }
+          });
+          component.get('averageHeaders').set('performanceData', arrayComplete);
+        } else {
+          array2.forEach(function(item, indx) {
+            if (
+              (item.level !== undefined && item.level === filterBy) ||
+              (item.collectionType !== undefined &&
+                item.collectionType === filterBy)
+            ) {
+              array2.removeAt(indx);
+            }
+          });
+          arrayComplete.pushObjects(array1);
+          arrayComplete.pushObjects(component.get('averageHeadersAssessment'));
+          array2.forEach(function(item) {
+            if (
+              !(
+                (item.collectionType !== undefined &&
+                  item.collectionType === filterBy) ||
+                (item.level !== undefined && item.level === filterBy)
+              )
+            ) {
+              arrayComplete.pushObject(item);
+            }
+          });
+          component.get('averageHeaders').set('performanceData', arrayComplete);
+        }
+      }
+    }, timerConst);
+    if (countCols === 0) {
+      var lessonValObj = temp.get('subColumns').findBy('id', lessonObj.id);
+      if (lessonValObj !== undefined) {
+        var indx = temp.get('subColumns').indexOf(lessonValObj);
+        temp.get('subColumns').removeAt(indx);
+      }
+      component.set('isLoading', false);
+    }
+    if (countCols > 0) {
+      component.set(
+        'totalAssessments',
+        component.get('totalAssessments') + countCols
+      );
+      Ember.set(temp, 'colspanval', component.get('totalAssessments') + 1);
+      // component
+      //   .get('performanceService')
+      //   .findClassPerformanceByUnitAndLesson(
+      //     classId,
+      //     courseIdVal,
+      //     unitId,
+      //     lessonObj.id,
+      //     members.get('members'),
+      //     { collectionType: filterBy }
+      //   )
+      //   .then(function(classPerformanceData) {
+      const performanceData = createDataMatrix(
+        filteredCollections,
+        classPerformanceData,
+        'lesson'
+      );
+      component.set('assessmentperformanceDataMatrix', performanceData);
+      const assessmentperformanceData = Ember.computed(
+        'assessmentperformanceDataMatrix.length',
+        'sortCriteria',
+        function() {
+          const performanceData = this.get(
+            'assessmentperformanceDataMatrix'
+          ).slice(1);
+          var lessonPerformanceObj = Ember.Object.create({
+            lessonId: lessonObj.id,
+            lessonData: component
+              .get('assessmentperformanceDataMatrix')
+              .objectAt(0)
+              .performanceData.slice(1)
+          });
+          component
+            .get('averageHeaderstempAssessment')
+            .pushObject(lessonPerformanceObj);
+          return performanceData;
+        }
+      );
+
+      component.set('assessmentperformanceData', assessmentperformanceData);
+      var indxObj = 0;
+      component.get('assessmentperformanceData').forEach(function(item) {
+        var lessonUser = item.userId;
+        var assessmentperformanceData = item.performanceData;
+        component.get('performanceData').forEach(function(item1) {
+          var indexLesson = 0;
+          var tempInx = unitIndex + 1;
+          if (lessonUser === item1.userId) {
+            item1.performanceData.forEach(function(item9, lessonpIndex) {
+              if (item9 !== undefined && item9.id !== undefined) {
+                if (item9.id === unitId) {
+                  item9.set('unitIdVal', unitId);
+                  if (lessonpIndex === tempInx) {
+                    var hdrObj = component
+                      .get('averageHeaders')
+                      .performanceData.objectAt(lessonpIndex);
+                    hdrObj.set('unitIdVal', unitId);
+                    component
+                      .get('averageHeaders')
+                      .performanceData.removeAt(lessonpIndex);
+                    component
+                      .get('averageHeaders')
+                      .performanceData.insertAt(lessonpIndex, hdrObj);
+                  }
+                  assessmentperformanceData.removeAt(0);
+                  item9.set('subColumns', []);
+                  if (lessonIndex === 0) {
+                    item9.set('subsubColumns', []);
+                  }
+                  var assessmentsStr = '';
+                  var colcount = 0;
+                  lesson.get('children').forEach(function(assessmentObj) {
+                    if (assessmentObj.format === filterBy) {
+                      assessmentsStr = `${assessmentsStr + assessmentObj.id},`;
+                      var emberObject = Ember.Object.create({
+                        id: assessmentObj.id,
+                        unitId: unitId,
+                        lessonId: lessonObj.id
+                      });
+                      if (item9.get('subsubColumns') !== undefined) {
+                        item9.get('subsubColumns').pushObject(emberObject);
+                      } else {
+                        item9.set('subsubColumns', []);
+                        item9.get('subsubColumns').pushObject(emberObject);
+                      }
+                      colcount = colcount + 1;
+                    }
+                  });
+                  if (tempVal === 0) {
+                    assessmentsStr = `${`${assessmentsStr}NoObject`},`;
+                    var emberObject = Ember.Object.create({
+                      id: 'NoObject',
+                      unitId: unitId,
+                      lessonId: lessonObj.id
+                    });
+                    if (item9.get('subsubColumns') !== undefined) {
+                      item9.get('subsubColumns').pushObject(emberObject);
+                    } else {
+                      item9.set('subsubColumns', []);
+                      item9.get('subsubColumns').pushObject(emberObject);
+                    }
+                  }
+                  for (var j = 0; j < assessmentperformanceData.length; j++) {
+                    if (
+                      assessmentperformanceData[j] !== undefined &&
+                      tempVal !== 0
+                    ) {
+                      if (
+                        assessmentsStr.indexOf(
+                          assessmentperformanceData[j].id
+                        ) !== -1
+                      ) {
+                        var group = item9
+                          .get('subsubColumns')
+                          .findBy('id', assessmentperformanceData[j].id);
+                        if (group !== undefined) {
+                          indxObj = item9.get('subsubColumns').indexOf(group);
+                          assessmentperformanceData[j].set('unitId', unitId);
+                          assessmentperformanceData[j].set(
+                            'lessonId',
+                            lessonObj.id
+                          );
+                          var objAtLesson = item9
+                            .get('subsubColumns')
+                            .objectAt(indxObj);
+
+                          if (objAtLesson.lessonId === lessonObj.id) {
+                            item9.get('subsubColumns').removeAt(indxObj);
+                            item9
+                              .get('subsubColumns')
+                              .insertAt(indxObj, assessmentperformanceData[j]);
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              indexLesson = indexLesson + 1;
+            });
+          }
+        });
+        indxObj = indxObj + 1;
+      });
+      //});
+    }
+    //});
     index1 = index1 + 1;
   },
   eachLessonAssessment: function(
